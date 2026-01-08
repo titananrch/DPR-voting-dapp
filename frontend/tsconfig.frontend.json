@@ -1,37 +1,35 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": false,
+    "strict": true,
     "noEmit": true,
-    "incremental": true,
-    "module": "esnext",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "module": "commonjs",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
+    "incremental": true,
+    "types": ["node", "hardhat"],
     "plugins": [
       {
         "name": "next"
       }
-    ]
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
   "include": [
     "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
-    "**/*.ts",
-    "**/*.tsx"
+    "scripts/**/*.ts", "test/**/*.ts", "hardhat.config.*"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }
