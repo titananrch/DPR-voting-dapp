@@ -28,20 +28,13 @@ async function main() {
   );
   await partyVoting.waitForDeployment();
 
-  const DPRVoting = await ethers.getContractFactory("DPRVoting");
-  const dprVoting = await DPRVoting.deploy(
-    await topicManager.getAddress(),
-    await partyVoting.getAddress()
-  );
-  await dprVoting.waitForDeployment();
-
   const addresses = {
-    network: network.name,
-    topicManager: await topicManager.getAddress(),
-    partyRegistry: await partyRegistry.getAddress(),
-    memberRegistry: await memberRegistry.getAddress(),
-    partyVoting: await partyVoting.getAddress(),
-    dprVoting: await dprVoting.getAddress(),
+    [network.name]: {
+      topicManager: await topicManager.getAddress(),
+      partyRegistry: await partyRegistry.getAddress(),
+      memberRegistry: await memberRegistry.getAddress(),
+      partyVoting: await partyVoting.getAddress(),
+    }
   };
 
   console.log("Deployed:", addresses);

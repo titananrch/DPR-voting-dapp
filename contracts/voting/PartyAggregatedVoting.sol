@@ -13,9 +13,11 @@ contract PartyAggregatedVoting {
     // topicId => voter => hasVoted
     mapping(uint256 => mapping(address => bool)) public hasVoted;
 
+    // topicId => voter => optionId
+    mapping(uint256 => mapping(address => uint256)) public userVote;
+
     // topicId => partyId => optionId => voteCount
-    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256)))
-        public voteCounts;
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) public voteCounts;
 
     event VoteCast(
         uint256 indexed topicId,
@@ -64,8 +66,10 @@ contract PartyAggregatedVoting {
         );
 
         hasVoted[topicId][msg.sender] = true;
+        userVote[topicId][msg.sender] = optionId;
         voteCounts[topicId][partyId][optionId]++;
 
         emit VoteCast(topicId, partyId, optionId);
     }
+    
 }

@@ -36,6 +36,12 @@
           "internalType": "uint256",
           "name": "topicId",
           "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "title",
+          "type": "string"
         }
       ],
       "name": "TopicClosed",
@@ -70,6 +76,25 @@
           "type": "uint256"
         },
         {
+          "indexed": false,
+          "internalType": "string",
+          "name": "title",
+          "type": "string"
+        }
+      ],
+      "name": "TopicOpened",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "topicId",
+          "type": "uint256"
+        },
+        {
           "indexed": true,
           "internalType": "uint256",
           "name": "optionId",
@@ -83,6 +108,31 @@
         }
       ],
       "name": "VoteOptionAdded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "topicId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "optionId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "voter",
+          "type": "address"
+        }
+      ],
+      "name": "Voted",
       "type": "event"
     },
     {
@@ -207,6 +257,19 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "topicId",
+          "type": "uint256"
+        }
+      ],
+      "name": "openTopic",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
