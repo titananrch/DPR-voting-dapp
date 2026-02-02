@@ -61,6 +61,10 @@ contract VotingTopicManager is Admin {
             topics[topicId].status == TopicStatus.Early,
             "Topic not in Early stage"
         );
+        require(
+            topicOptions[topicId].length >= 2,
+            "Topic must have at least two options"
+        );
         topics[topicId].status = TopicStatus.Open;
         emit TopicOpened(topicId, topics[topicId].title);
     }

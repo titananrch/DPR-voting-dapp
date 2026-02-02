@@ -1,10 +1,11 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const [admin, golkar1, golkar2, pdip1] = await ethers.getSigners();
-  console.log("Seeding with admin:", admin.address);
+  const signers = await ethers.getSigners();
+  const admin = signers[0];
+  console.log("Admin Address: ", admin.address);
 
-  
+  // Get contract instances
   const topicManager = await ethers.getContractAt(
     "VotingTopicManager",
     "0x5FbDB2315678afecb367f032d93F642f64180aa3",
@@ -21,37 +22,92 @@ async function main() {
     admin
   );
 
-  // 1. Parties
-  let tx = await partyRegistry.addParty("Golkar");
-  await tx.wait();
-  const golkarId = await partyRegistry.partyCount();
+  // Define parties and their member distribution (accounts 1-18)
+  const partySetup = {
+    Golkar: [1, 2, 3, 4, 5],
+    PDIP: [6, 7, 8, 9],
+    Demokrat: [10, 11, 12, 13],
+    Gerindra: [14, 15, 16, 17],
+    Nasdem: [18, 19],
+  };
 
-  tx = await partyRegistry.addParty("PDIP");
-  await tx.wait();
-  const pdipId = await partyRegistry.partyCount();
+  const partyIds: Record<string, bigint> = {};
 
-  // 2. Members (use the 1-based IDs we just read)
-  tx = await memberRegistry.registerMember(golkar1.address, golkarId);
-  await tx.wait();
-  tx = await memberRegistry.registerMember(golkar2.address, golkarId);
-  await tx.wait();
-  tx = await memberRegistry.registerMember(pdip1.address, pdipId);
-  await tx.wait();
+  // Create parties
+  console.log("Creating Parties...");
+  for (const partyName of Object.keys(partySetup)) {
+    const tx = await partyRegistry.addParty(partyName);
+    await tx.wait();
+    partyIds[partyName] = await partyRegistry.partyCount();
+    console.log(`  - ${partyName} (ID: ${partyIds[partyName]})`);
+  }
 
-  // 3. Topic
-  // 1. Create topic (Early)
-  tx = await topicManager.createTopic("RUU Pasal 1");
-  await tx.wait();
-  const topicId = await topicManager.topicCount();
+  // Register members
+  console.log("Registering Members...");
+  for (const [partyName, memberIndices] of Object.entries(partySetup)) {
+    for (const idx of memberIndices) {
+      const memberAddress = signers[idx].address;
+      const tx = await memberRegistry.registerMember(
+        memberAddress,
+        partyIds[partyName]
+      );
+      await tx.wait();
+      console.log(`  - ${partyName}: ${memberAddress}`);
+    }
+  }
 
-  // 2. Configure options
-  tx = await topicManager.addVoteOption(topicId, "Approve");
-  await tx.wait();
-  tx = await topicManager.addVoteOption(topicId, "Revise");
-  await tx.wait();
-  tx = await topicManager.addVoteOption(topicId, "Absent");
-  await tx.wait();
-  console.log("Seeding complete");
+  // Define voting topics with options
+  const topics = [
+    {
+      title: "RUU Pasal 1",
+      options: ["Approve", "Revise", "Absent"],
+    },
+    {
+      title: "Budget Allocation 2026",
+      options: ["Increase", "Maintain", "Reduce", "Review"],
+    },
+    {
+      title: "Infrastructure Development",
+      options: ["Fast Track", "Standard", "Study First"],
+    },
+    {
+      title: "Education Reform",
+      options: ["Support", "Oppose", "Modify"],
+    },
+    {
+      title: "Healthcare Policy",
+      options: ["Expand Coverage", "Optimize Current", "Reduce Scope"],
+    },
+    {
+      title: "Environmental Protection",
+      options: ["Strict Regulations", "Moderate", "Lenient"],
+    },
+    {
+      title: "Trade Agreement",
+      options: ["Sign Now", "Renegotiate", "Reject"],
+    },
+    {
+      title: "Digital Transformation",
+      options: ["Full Implementation", "Gradual", "Selective Industries"],
+    },
+  ];
+
+  // Create topics and options
+  console.log("Creating Topics and Options...");
+  for (const topic of topics) {
+    const tx = await topicManager.createTopic(topic.title);
+    await tx.wait();
+    const topicId = await topicManager.topicCount();
+    console.log(`  - ${topic.title} (ID: ${topicId})`);
+
+    for (const option of topic.options) {
+      const optionTx = await topicManager.addVoteOption(topicId, option);
+      await optionTx.wait();
+      console.log(`      - ${option}`);
+    }
+  }
+
+  console.log("Seeding complete!");
 }
 
 main().catch(console.error);

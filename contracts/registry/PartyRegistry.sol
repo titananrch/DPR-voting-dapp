@@ -10,6 +10,7 @@ contract PartyRegistry is Admin {
 
     event PartyAdded(uint256 indexed partyId, string name);
     event PartyDeactivated(uint256 indexed partyId);
+    event PartyActivated(uint256 indexed partyId);
 
     constructor() {
         _setAdmin(msg.sender);
@@ -29,6 +30,14 @@ contract PartyRegistry is Admin {
         parties[partyId].active = false;
 
         emit PartyDeactivated(partyId);
+    }
+
+    function activateParty(uint256 partyId) external onlyAdmin {
+        require(!parties[partyId].active, "Party already active");
+
+        parties[partyId].active = true;
+
+        emit PartyActivated(partyId);
     }
 
     function isActiveParty(uint256 partyId) public view returns (bool) {

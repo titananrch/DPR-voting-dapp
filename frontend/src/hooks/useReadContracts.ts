@@ -96,10 +96,19 @@ export async function getUserVote(
     // Ensure address is checksummed and properly formatted
     const checksummedUser = ethers.getAddress(user);
     
+    // First check if user has actually voted
+    const voted = await partyVoting.hasVoted(topicId, checksummedUser);
+    
+    if (!voted) {
+      // Return sentinel value if hasn't voted
+      return NOT_VOTED;
+    }
+    
+    // If voted, get the option ID
     const optionId = await partyVoting.userVote(topicId, checksummedUser);
     const result = Number(optionId);
     
-    // Return the actual option ID (even if it's 0)
+    console.log(`getUserVote - Topic: ${topicId}, User: ${checksummedUser}, OptionId: ${result}, hasVoted: true`);
     return result;
   } catch (error) {
     console.error(`Error getting user vote for topic ${topicId}:`, error);
@@ -148,5 +157,44 @@ export async function getResults(topicId: number) {
   } catch (error) {
     console.error(`Error getting results for topic ${topicId}:`, error);
     return [];
+  }
+}
+
+// Admin helper
+export async function isAdmin(address: string): Promise<boolean> {
+  const topicManager = new ethers.Contract(
+    contracts.topicManager.address,
+    contracts.topicManager.abi,
+    provider
+  );
+
+  try {
+    const checksummedAddress = ethers.getAddress(address);
+    const adminAddress = await topicManager.admin();
+    
+    console.log(`Checking admin status - Address: ${checksummedAddress}, Admin: ${adminAddress}`);
+    
+    return ethers.getAddress(adminAddress) === checksummedAddress;
+  } catch (error) {
+    console.error(`Error checking admin status for ${address}:`, error);
+    return false;
+  }
+}
+
+// Member status check
+export async function isMemberActive(memberAddress: string): Promise<boolean> {
+  const memberRegistry = new ethers.Contract(
+    contracts.memberRegistry.address,
+    contracts.memberRegistry.abi,
+    provider
+  );
+
+  try {
+    const checksummedAddress = ethers.getAddress(memberAddress);
+    const isActive = await memberRegistry.memberActive(checksummedAddress);
+    return isActive;
+  } catch (error) {
+    console.error(`Error checking member active status for ${memberAddress}:`, error);
+    return false;
   }
 }
