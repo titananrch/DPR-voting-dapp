@@ -22,15 +22,15 @@ export default function PartiesSection({
     : null;
 
   return (
-    <section className="space-y-6">
+    <section className="">
       {/* CONTEXTUAL H2 */}
-      <h2 className="text-xl font-bold">
+      <h2 className="text-xl font-bold mt-6">
         {selectedParty ? `${selectedParty.id}. ${selectedParty.name}` : ""}
         <span className="text-gray-500"> {selectedParty ? (selectedParty.active ? "(Active)" : "(Not Active)") : ""}</span>
       </h2>
 
       {visibleParties.map((p) => (
-        <div key={p.id} className="-mt-2">
+        <div key={p.id}>
           {!selectedParty && (
             <h2 className="font-bold text-xl">
               {p.id}. {p.name}{" "}
@@ -39,7 +39,7 @@ export default function PartiesSection({
               </span>
             </h2>
           )}
-          <div className="border border-white/10 rounded-lg p-4">
+          <div className="border border-white/10 bg-[#171717] rounded-lg mt-2 mb-6 px-4 py-2">
             {/* MEMBERS */}
             <ol className="mt-2 ml-5 list-decimal text-sm font-mono text-[#a1a1a1]">
               {members[p.id]?.map((m, i) => (

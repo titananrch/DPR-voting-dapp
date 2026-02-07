@@ -36,7 +36,7 @@ export default function TopicsSection({
 }: TopicsSectionProps) {
   return (
     <section>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex items-center justify-end  pt-4 mb-4">
         {isAdminUser && setShowNewTopicModal && (
           <button
             onClick={() => setShowNewTopicModal(true)}
@@ -49,11 +49,16 @@ export default function TopicsSection({
       </div>
 
       {topics.map((t) => (
-        <div key={t.id} className="border border-white/10 rounded-lg p-4 mt-3">
+        <div key={t.id} className="border border-white/10 bg-[#171717] rounded-lg p-4 mt-3">
           <p className="font-bold text-sm">{t.title}</p>
 
-          <p className="font-medium text-sm text-[#a1a1a1]">
-            Status: {t.statusLabel}
+          <p className="text-sm text-[#a1a1a1] inline-block mt-2">
+            Status: 
+            <span className={`w-fit ml-2 rounded-full px-4 py-0.5 text-xs font-medium ${
+              t.status === 0 ? 'bg-gray-400/20 text-gray-400' :
+              t.status === 1 ? 'bg-green-500/10 text-green-600' :
+              'bg-orange-500/20 text-orange-600'
+            }`}>{t.statusLabel}</span>
           </p>
 
           {/* ============================================
@@ -83,7 +88,7 @@ export default function TopicsSection({
               )}
 
               {isAdminUser && (
-                <div className="flex gap-2 pt-2">
+                <div className="flex justify-end gap-2 border-t border-white/10 mt-4 pt-3">
                   <button
                     onClick={() => {
                       setSelectedTopicId(t.id);
@@ -152,13 +157,13 @@ export default function TopicsSection({
               </div>
 
               {isAdminUser && (
-                <div className="flex gap-2 pt-2">
+                <div className="flex justify-end gap-2 border-t border-white/10 mt-4 pt-3">
                   <button
                     onClick={() => handleCloseTopic(t.id)}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium cursor-pointer bg-white text-black rounded hover:bg-white/80 hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="pr-4 pl-3 py-2 inline-flex items-center gap-1 cursor-pointer bg-white text-black text-xs font-semibold rounded hover:not-disabled:bg-white/80 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={loading}
                   >
-                    <X className="w-4 h-4 shrink-0" strokeWidth={3} />
+                    <X className="w-4 h-4 shrink-0 -mt-1" strokeWidth={3} />
                     <span>Close Topic</span>
                   </button>
                 </div>

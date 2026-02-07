@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -49,4 +50,3 @@ body {
 .animate-toast-out {
   animation: toast-out 0.2s ease-in forwards;
 }
-

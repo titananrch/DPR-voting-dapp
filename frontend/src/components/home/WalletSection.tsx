@@ -1,6 +1,6 @@
 "use client";
 
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef } from "react";
 
 interface WalletSectionProps {
   connectionState: "idle" | "connecting" | "connected";
@@ -19,8 +19,33 @@ export default function WalletSection({
   isAdminUser,
   setShowAdminModal,
 }: WalletSectionProps) {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const updateHeaderHeight = () => {
+      if (sectionRef.current) {
+        const height = sectionRef.current.offsetHeight;
+        document.documentElement.style.setProperty("--header-height", `${height}px`);
+      }
+    };
+
+    // Initial measurement
+    updateHeaderHeight();
+
+    // Handle window resize
+    const resizeObserver = new ResizeObserver(updateHeaderHeight);
+    if (sectionRef.current) {
+      resizeObserver.observe(sectionRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, []);
+
   return (
-    <section className="border-b border-white/10 py-6 px-10 sticky top-0 z-5 bg-black/10 backdrop-blur-md flex justify-between items-center">
+    <section 
+      ref={sectionRef}
+      className="border-b border-white/10 py-6 px-10 sticky top-0 z-50 bg-[#0E0E0E] flex justify-between items-center"
+    >
       {connectionState === "idle" && (
         <div className="space-y-2">
           <p className="text-sm text-gray-600">Not connected to wallet</p>
@@ -44,21 +69,24 @@ export default function WalletSection({
       )}
 
       {connectionState === "connected" && (
-        <div className="space-y-1">
-          <p className="text-sm font-semibold">Wallet Connected</p>
-          <p className="text-sm text-[#a1a1a1] font-mono">{account}</p>
+        <div className="flex items-center justify-between w-full">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Wallet Connected</p>
+            <p className="text-sm text-[#a1a1a1] font-mono">{account}</p>
+            {isAdminUser && (
+              <p className="text-sm text-green-600 font-semibold">👤 Admin Account</p>
+            )}
+          </div>
+
           {isAdminUser && (
-            <>
-              <p className="text-sm text-green-600 font-semibold">
-                👤 Admin Account
-              </p>
+            <div className="flex items-center justify-end">
               <button
                 onClick={() => setShowAdminModal(true)}
-                className="mt-2 px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                className="ml-4 px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
               >
                 Manage Parliament
               </button>
-            </>
+            </div>
           )}
         </div>
       )}

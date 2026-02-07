@@ -18,16 +18,6 @@ export default function Background() {
             blur-xl
         "
       />
-      <div
-        className="
-          absolute
-          top-0
-          w-full h-40
-          bg-linear-to-b
-          from-white/10
-          to-transparent
-        "
-      />
 
       {/* Bottom-right glow */}
       <div
