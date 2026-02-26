@@ -1,25 +1,30 @@
 import addresses from "../contracts/addresses.json"
 
-import PartyRegistryABI from "../contracts/abi/PartyRegistry.json"
-import MemberRegistryABI from "../contracts/abi/MemberRegistry.json"
-import VotingTopicManagerABI from "../contracts/abi/VotingTopicManager.json"
-import PartyAggregatedVotingABI from "../contracts/abi/PartyAggregatedVoting.json"
+import ExecutionEngineABI from "../contracts/abi/ExecutionEngine.json"
+import GovernanceConfigABI from "../contracts/abi/GovernanceConfig.json"
+import ProposalDraftManagerABI from "../contracts/abi/ProposalDraftManager.json"
+import SeatNFTABI from "../contracts/abi/SeatNFT.json"
+import VotingEngineABI from "../contracts/abi/VotingEngine.json"
 
 export const contracts = {
-  partyRegistry: {
-    address: addresses.localhost.partyRegistry as `0x${string}`,
-    abi: PartyRegistryABI
+  executionEngine: {
+    address: addresses.localhost.executionEngine as `0x${string}`,
+    abi: ExecutionEngineABI
   },
-  memberRegistry: {
-    address: addresses.localhost.memberRegistry as `0x${string}`,
-    abi: MemberRegistryABI
+  governanceConfig: {
+    address: addresses.localhost.governanceConfig as `0x${string}`,
+    abi: GovernanceConfigABI
   },
-  topicManager: {
-    address: addresses.localhost.topicManager as `0x${string}`,
-    abi: VotingTopicManagerABI
+  proposalDraftManager: {
+    address: addresses.localhost.proposalDraftManager as `0x${string}`,
+    abi: ProposalDraftManagerABI
   },
-  partyAggregatedVoting: {
-    address: addresses.localhost.partyVoting as `0x${string}`,
-    abi: PartyAggregatedVotingABI
+  seatNft: {
+    address: addresses.localhost.seatNft as `0x${string}`,
+    abi: SeatNFTABI
+  },
+  votingEngine: {
+    address: addresses.localhost.votingEngine as `0x${string}`,
+    abi: VotingEngineABI
   }
 }
