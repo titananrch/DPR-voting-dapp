@@ -5,7 +5,9 @@ export function useProposalList(status: number | null = null) {
   return useQuery({
     queryKey: ['governance', 'proposals', status],
     queryFn: () => getProposalsByStatus(status),
-    staleTime: 60 * 1000
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchInterval: 10_000,
   })
 }
 

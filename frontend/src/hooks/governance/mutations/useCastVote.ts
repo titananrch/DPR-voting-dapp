@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWriteContract, useAccount } from 'wagmi'
 import { useGovernancePermissions } from '../useGovernancePermissions'
-import { publicClient } from '../../../domain/governance/aggregator'
+import { publicClient, clearProposalCache } from '../../../domain/governance/aggregator'
 import VotingABI from '../../../contracts/abi/VotingEngine.json'
 import { CONTRACTS } from '../../../contracts/addresses'
 
@@ -38,12 +38,28 @@ export function useCastVote() {
       return hash
     },
     onSuccess: (_data, { proposalId }) => {
+      clearProposalCache()
       queryClient.invalidateQueries({
-        queryKey: ['governance', 'proposal', proposalId],
+        queryKey: ['governance', 'proposal', proposalId.toString()],
       })
 
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-sponsors-map'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'userSupportMap'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'userVoteMap'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'seat-details'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-details-map'],
       })
     },
   })

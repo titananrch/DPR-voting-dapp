@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWriteContract, useAccount } from 'wagmi'
-import { publicClient } from '../../../domain/governance/aggregator'
+import { publicClient, clearProposalCache } from '../../../domain/governance/aggregator'
 import ProposalDraftManagerABI from '../../../contracts/abi/ProposalDraftManager.json'
 import { CONTRACTS } from '../../../contracts/addresses'
 
@@ -28,8 +28,10 @@ export function useStartVoting() {
       return hash
     },
     onSuccess: (_data, { proposalId }) => {
+      clearProposalCache()
+      console.debug('🔄 Clearing proposal cache and invalidating queries after startVoting', { proposalId })
       queryClient.invalidateQueries({
-        queryKey: ['governance', 'proposal', proposalId],
+        queryKey: ['governance', 'proposal', proposalId.toString()],
       })
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],

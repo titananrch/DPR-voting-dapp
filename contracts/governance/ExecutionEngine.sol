@@ -198,6 +198,11 @@ contract ExecutionEngine {
         uint256 quorumRequired = (totalSeats * governanceConfig.quorum()) /
             10000;
 
+        // Ensure at least 1 vote required
+        if (quorumRequired == 0) {
+            quorumRequired = 1;
+        }
+
         if (totalVotes < quorumRequired) {
             return (false, "Quorum not met");
         }
@@ -254,24 +259,12 @@ contract ExecutionEngine {
         );
 
         // Check emergency pause
+        // A pause is a TEMPORARY condition, not a governance decision. Revert so
+        // that no terminal state is committed: the proposal stays Closed, its
+        // execution flag is not consumed, no execution result is written, and it
+        // remains retryable once the pause is lifted.
         if (governanceConfig.emergencyPause()) {
-            emit ExecutionPausedByEmergency(proposalId, block.number);
-            proposal.status = ProposalStatus.Rejected;
-            executed[proposalId] = true;
-            executionResults[proposalId] = ExecutionResult({
-                approved: false,
-                executed: false,
-                reason: "Emergency pause active",
-                blockNumber: block.number,
-                timestamp: block.timestamp
-            });
-            emit ProposalExecuted(
-                proposalId,
-                false,
-                "Emergency pause active",
-                block.number
-            );
-            return false;
+            revert("Emergency pause active");
         }
 
         // Check quorum and approval
@@ -279,8 +272,12 @@ contract ExecutionEngine {
             string memory reason = !quorumMet
                 ? "Quorum not met"
                 : "Approval threshold not met";
-            emit ProposalRejected(proposalId, reason, block.number);
-            proposal.status = ProposalStatus.Rejected;
+
+            // Persist the authoritative terminal status FIRST. The proposal did
+            // not meet governance requirements, so it is Rejected - and this is
+            // final because the votes are already cast and counted.
+            proposalManager.markProposalRejected(proposalId);
+
             executed[proposalId] = true;
             executionResults[proposalId] = ExecutionResult({
                 approved: false,
@@ -289,11 +286,18 @@ contract ExecutionEngine {
                 blockNumber: block.number,
                 timestamp: block.timestamp
             });
-            emit ProposalExecuted(proposalId, false, reason, block.number);
+
+            // ProposalExecuted is intentionally NOT emitted here: the proposal was
+            // not executed. ProposalRejected plus ProposalStatusUpdated describe
+            // this outcome accurately.
+            emit ProposalRejected(proposalId, reason, block.number);
+
             return false;
         }
 
         // Execute based on proposal type
+        // A failure here reverts the entire transaction, so no terminal status,
+        // execution flag, or execution result can be committed for a failed action.
         if (proposal.proposalType == ProposalType.RuleChange) {
             _executeRuleChange(proposalId);
         } else if (proposal.proposalType == ProposalType.Action) {
@@ -302,9 +306,11 @@ contract ExecutionEngine {
             revert("Unknown proposal type");
         }
 
-        // Mark as executed
-        proposal.status = ProposalStatus.Executed;
-        proposal.executedAt = block.timestamp;
+        // Persist the authoritative terminal status in ProposalDraftManager.
+        // This must happen AFTER the execution above so that a reverted execution
+        // can never leave behind an Executed proposal.
+        proposalManager.markProposalExecuted(proposalId);
+
         executed[proposalId] = true;
         executionResults[proposalId] = ExecutionResult({
             approved: true,
@@ -416,18 +422,31 @@ contract ExecutionEngine {
 
     /**
      * @notice Internal function to execute an Action proposal
+     * @dev ActionExecutor.execute() performs a low-level call and returns whether
+     *      it succeeded. That boolean MUST be enforced here - otherwise a failed
+     *      external call would still be recorded as a successful execution
+     *      (violating "failed execution must never be represented as successful").
+     *
+     *      The revert rolls back the whole transaction, so no Executed status,
+     *      execution flag, execution result, or ActionExecuted event can be
+     *      committed for an action that failed.
+     *
+     *      ActionExecutor.execute() also reverts for non-whitelisted targets, which
+     *      propagates here for the same reason.
      */
     function _executeAction(uint256 proposalId) internal {
         ActionData memory actionData = proposalManager.getActionData(
             proposalId
         );
 
-        actionExecutor.execute(
+        bool success = actionExecutor.execute(
             proposalId,
             actionData.targetContract,
             actionData.functionSelector,
             actionData.encodedParams
         );
+
+        require(success, "Action execution failed");
 
         emit ActionExecuted(
             proposalId,

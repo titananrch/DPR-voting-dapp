@@ -3,13 +3,16 @@ import type { Address } from 'viem'
 import { getUserSeats } from '../../../domain/governance/aggregator'
 
 export function useSeatInfo(address?: Address) {
-  return useQuery<bigint[]>({
+  return useQuery<number[]>({
     queryKey: ['governance', 'seats', address ?? null],
     queryFn: async () => {
+      console.debug('📭 useSeatInfo: Fetching seats (this is the single source of truth)', { address })
       if (!address) return []
       return getUserSeats(address)
     },
     enabled: !!address,
-    staleTime: 10 * 60 * 1000
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    refetchInterval: 10_000,
   })
 }

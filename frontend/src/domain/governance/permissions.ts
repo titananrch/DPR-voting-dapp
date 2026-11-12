@@ -4,10 +4,10 @@ export type GovernancePermissions = {
   canPropose: boolean
   canExecute: boolean
   seatCount: number
-  seats: bigint[]
+  seats: number[]
 }
 
-export function derivePermissions(seats?: bigint[]): GovernancePermissions {
+export function derivePermissions(seats?: number[]): GovernancePermissions {
   const hasSeat = (seats?.length ?? 0) > 0
   return {
     isSeatHolder: hasSeat,

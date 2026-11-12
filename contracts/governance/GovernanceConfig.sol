@@ -48,7 +48,7 @@ contract GovernanceConfig {
     uint256 public approvalThreshold = 5000; // Default: 50%
     
     /// @notice Minimum delay: time before a draft proposal becomes votable (seconds)
-    uint256 public minProposalDelay = 86400; // Default: 24 hours
+    uint256 public minProposalDelay = 300; // temporary but the Default is: 24 hours = 86400
     
     /// @notice Emergency pause: blocks execution (but not voting) when true
     bool public emergencyPause = false;

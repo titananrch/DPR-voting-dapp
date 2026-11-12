@@ -21,17 +21,17 @@ export enum VoteOptionEnum {
 }
 
 export interface GovernanceParameters {
-  quorum: bigint
-  votingDuration: bigint
-  approvalThreshold: bigint
-  minProposalDelay: bigint
+  quorum: number
+  votingDuration: number
+  approvalThreshold: number
+  minProposalDelay: number
   emergencyPause: boolean
 }
 
 export interface VoteResult {
-  approvalVotes: bigint
-  rejectionVotes: bigint
-  totalVotes: bigint
+  approvalVotes: number
+  rejectionVotes: number
+  totalVotes: number
   quorumMet: boolean
   approvalThresholdMet: boolean
   approved: boolean
@@ -44,20 +44,20 @@ export interface ExecutionStatus {
 }
 
 export interface ProposalData {
-  id: bigint
+  id: number
   proposer: Address
   proposalType: ProposalTypeEnum
   status: ProposalStatusEnum
   description: string
-  createdAt: bigint
-  activatedAt: bigint
-  votingStartedAt: bigint
-  votingEndedAt: bigint
-  quorumRequired: bigint
-  approvalThresholdRequired: bigint
+  createdAt: number
+  activatedAt: number
+  votingStartedAt: number
+  votingEndedAt: number
+  quorumRequired: number
+  approvalThresholdRequired: number
   votes: VoteResult
   execution: ExecutionStatus
-  userSeats?: bigint[]
+  userSeats?: number[]
   userVotes?: Record<string, VoteOptionEnum>
 }
 
@@ -65,7 +65,7 @@ export interface UnifiedGovernanceState {
   parameters: GovernanceParameters
   proposal?: ProposalData
   userAddress?: Address
-  userSeats?: bigint[]
+  userSeats?: number[]
 }
 
 export interface PreparedProposal {
@@ -83,6 +83,6 @@ export interface PreparedProposal {
   sponsorCount: number
   partyCount: number
   thresholdMet: boolean
-  isVoting: boolean
-  isClosed: boolean
+  // Time-sensitive lifecycle flags removed. UI must derive these using
+  // the blockchain-synced time source so that display logic is deterministic.
 }

@@ -87,6 +87,7 @@ async function main() {
     await votingEngine.getAddress(),       // votingEngine
     await actionExecutor.getAddress()      // actionExecutor
   );
+  await seatNft.setGovernance(await executionEngine.getAddress()); // Set governance to ExecutionEngine for minting/burning
   await executionEngine.waitForDeployment();
   console.log("✅ ExecutionEngine deployed:", await executionEngine.getAddress());
 

@@ -23,6 +23,9 @@ node_modules
 .env
 .env.*
 
+# Claude
+/.claude
+
 # Hardhat files
 /cache
 /artifacts
@@ -37,3 +40,9 @@ node_modules
 
 # Hardhat Ignition default folder for deployments against a local node
 ignition/deployments/chain-31337
+test/Phase1StatusWriteBack.cjs
+test/Phase1ExecutionWiring.cjs
+
+# Structure of the project
+frontend/src/components/IMPLEMENTATION_ROADMAP.txt
+frontend/src/components/PROJECT_ARCHITECTURE_BASELINE.txt

@@ -59,6 +59,9 @@ contract ProposalDraftManager {
     
     /// @notice Sponsors for each proposal: proposalId → seatIds
     mapping(uint256 => uint256[]) public proposalSponsors;
+
+    /// @notice Party represented by each sponsoring seat at sponsorship time
+    mapping(uint256 => mapping(uint256 => uint256)) public proposalSponsorParty;
     
     /// @notice Track if a seat has already sponsored a proposal
     mapping(uint256 => mapping(uint256 => bool)) public hasSponsoredProposal;
@@ -136,6 +139,16 @@ contract ProposalDraftManager {
         uint256 finalSponsorCount
     );
     
+    /// @notice Emitted when the ExecutionEngine records a terminal status change
+    /// @dev Status is owned by this contract; this event reflects an authoritative
+    ///      storage mutation performed by the authorized ExecutionEngine.
+    event ProposalStatusUpdated(
+        uint256 indexed proposalId,
+        ProposalStatus previousStatus,
+        ProposalStatus newStatus,
+        uint256 blockNumber
+    );
+    
     // ═══════════════════════════════════════════════════════════════════════
     // MODIFIERS
     // ═══════════════════════════════════════════════════════════════════════
@@ -149,6 +162,21 @@ contract ProposalDraftManager {
     /// @notice Require proposal exists
     modifier proposalExists(uint256 proposalId) {
         require(proposals[proposalId].id > 0, "Proposal does not exist");
+        _;
+    }
+    
+    /**
+     * @notice Require caller to be the authorized ExecutionEngine
+     * @dev The ExecutionEngine address is sourced from GovernanceConfig, which is
+     *      set exactly once during deployment and cannot be changed afterwards.
+     *      If GovernanceConfig.executionEngineAddress is still address(0), every
+     *      call fails closed because address(0) can never be msg.sender.
+     */
+    modifier onlyExecutionEngine() {
+        require(
+            msg.sender == governanceConfig.executionEngineAddress(),
+            "Only ExecutionEngine"
+        );
         _;
     }
     
@@ -382,6 +410,7 @@ contract ProposalDraftManager {
         
         // Track party
         uint256 partyId = seatNft.seatParty(seatId);
+        proposalSponsorParty[proposalId][seatId] = partyId;
         if (!partyHasSponsoredProposal[proposalId][partyId]) {
             sponsorParties[proposalId].push(partyId);
             partyHasSponsoredProposal[proposalId][partyId] = true;
@@ -499,6 +528,81 @@ contract ProposalDraftManager {
         proposal.status = ProposalStatus.Cancelled;
         
         emit DraftExpired(proposalId, proposalSponsors[proposalId].length);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CORE: TERMINAL STATUS WRITE-BACK (ExecutionEngine ONLY)
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    /**
+     * @notice Record that a closed proposal was successfully executed
+     * @dev Authoritative status is owned by this contract. ExecutionEngine reports
+     *      the outcome through this restricted entry point.
+     *
+     * Only a Closed proposal may be executed. This single guard prevents:
+     * - double execution,
+     * - executing a Draft/Active/Voting proposal,
+     * - re-executing an Executed or Rejected proposal,
+     * - executing a Cancelled proposal.
+     *
+     * @param proposalId ID of the proposal that was executed
+     */
+    function markProposalExecuted(uint256 proposalId) 
+        external 
+        onlyExecutionEngine 
+        proposalExists(proposalId) 
+    {
+        Proposal storage proposal = proposals[proposalId];
+        require(
+            proposal.status == ProposalStatus.Closed,
+            "Proposal is not Closed"
+        );
+        
+        ProposalStatus previousStatus = proposal.status;
+        
+        proposal.status = ProposalStatus.Executed;
+        proposal.executedAt = block.timestamp;
+        
+        emit ProposalStatusUpdated(
+            proposalId,
+            previousStatus,
+            ProposalStatus.Executed,
+            block.number
+        );
+    }
+    
+    /**
+     * @notice Record that a closed proposal failed governance requirements
+     * @dev A rejected proposal was never executed, so executedAt remains 0.
+     *      The rejection timestamp is recoverable from ExecutionEngine's
+     *      executionResults record and the ProposalStatusUpdated event.
+     *
+     * Rejection is final: the votes are already cast and counted, so the
+     * proposal cannot be retried.
+     *
+     * @param proposalId ID of the proposal that was rejected
+     */
+    function markProposalRejected(uint256 proposalId) 
+        external 
+        onlyExecutionEngine 
+        proposalExists(proposalId) 
+    {
+        Proposal storage proposal = proposals[proposalId];
+        require(
+            proposal.status == ProposalStatus.Closed,
+            "Proposal is not Closed"
+        );
+        
+        ProposalStatus previousStatus = proposal.status;
+        
+        proposal.status = ProposalStatus.Rejected;
+        
+        emit ProposalStatusUpdated(
+            proposalId,
+            previousStatus,
+            ProposalStatus.Rejected,
+            block.number
+        );
     }
     
     // ═══════════════════════════════════════════════════════════════════════

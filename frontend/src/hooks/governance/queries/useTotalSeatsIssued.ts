@@ -11,9 +11,11 @@ export function useTotalSeatsIssued() {
         address: CONTRACTS.seatNft,
         abi: SeatNFTABI,
         functionName: 'totalSupply',
+        authorizationList: undefined,
       })
       return Number(total)
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000, // 60 seconds
+    refetchOnWindowFocus: false,
   })
 }

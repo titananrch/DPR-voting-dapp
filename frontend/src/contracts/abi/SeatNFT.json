@@ -178,6 +178,11 @@
     },
     {
       "inputs": [],
+      "name": "UnauthorizedGovernance",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "UnauthorizedMint",
       "type": "error"
     },
@@ -260,6 +265,37 @@
         }
       ],
       "name": "ElectionAuthorityChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldGovernance",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newGovernance",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "updatedBy",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "blockNumber",
+          "type": "uint256"
+        }
+      ],
+      "name": "GovernanceChanged",
       "type": "event"
     },
     {
@@ -373,6 +409,43 @@
       "inputs": [
         {
           "indexed": true,
+          "internalType": "uint256",
+          "name": "seatId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newPartyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "blockNumber",
+          "type": "uint256"
+        }
+      ],
+      "name": "SeatReassigned",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
           "internalType": "address",
           "name": "from",
           "type": "address"
@@ -428,18 +501,18 @@
       "inputs": [
         {
           "internalType": "address",
-          "name": "to",
+          "name": "",
           "type": "address"
         },
         {
           "internalType": "uint256",
-          "name": "tokenId",
+          "name": "",
           "type": "uint256"
         }
       ],
       "name": "approve",
       "outputs": [],
-      "stateMutability": "nonpayable",
+      "stateMutability": "pure",
       "type": "function"
     },
     {
@@ -459,19 +532,6 @@
         }
       ],
       "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "tokenId",
-          "type": "uint256"
-        }
-      ],
-      "name": "burn",
-      "outputs": [],
-      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -616,6 +676,19 @@
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "governance",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -738,6 +811,29 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_seatId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "_newHolder",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_newPartyId",
+          "type": "uint256"
+        }
+      ],
+      "name": "reassignSeat",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -878,18 +974,18 @@
       "inputs": [
         {
           "internalType": "address",
-          "name": "operator",
+          "name": "",
           "type": "address"
         },
         {
           "internalType": "bool",
-          "name": "approved",
+          "name": "",
           "type": "bool"
         }
       ],
       "name": "setApprovalForAll",
       "outputs": [],
-      "stateMutability": "nonpayable",
+      "stateMutability": "pure",
       "type": "function"
     },
     {
@@ -901,6 +997,19 @@
         }
       ],
       "name": "setElectionAuthority",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_governance",
+          "type": "address"
+        }
+      ],
+      "name": "setGovernance",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

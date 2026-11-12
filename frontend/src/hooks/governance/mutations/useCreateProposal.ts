@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWriteContract, useAccount } from 'wagmi'
-import { publicClient } from '../../../domain/governance/aggregator'
+import { publicClient, clearProposalCache } from '../../../domain/governance/aggregator'
 import ProposalDraftABI from '../../../contracts/abi/ProposalDraftManager.json'
 import { CONTRACTS } from '../../../contracts/addresses'
 
@@ -23,25 +23,74 @@ export function useCreateProposal() {
       changeType,
       newValue,
     }: CreateDraftArgs) => {
-      const hash = await writeContractAsync({
-        address: CONTRACTS.proposalDraftManager,
-        abi: ProposalDraftABI,
-        functionName: 'createDraftProposal',
-        args: [title, description, changeType, newValue],
-        chain: undefined,
-        account: address
-      })
+      if (!address) {
+        throw new Error('Wallet not connected')
+      }
 
-      // Wait for confirmation
-      await publicClient.waitForTransactionReceipt({ hash })
+      if (!title.trim() || !description.trim()) {
+        throw new Error('Title and description are required')
+      }
 
-      return hash
+      try {
+        console.log('🚀 Creating proposal with args:', {
+          title,
+          description,
+          changeType,
+          newValue,
+        })
+
+        const hash = await writeContractAsync({
+          address: CONTRACTS.proposalDraftManager,
+          abi: ProposalDraftABI,
+          functionName: 'createDraftProposal',
+          args: [title, description, changeType, newValue],
+          chain: undefined,
+          account: address
+        })
+
+        console.log('✅ Transaction hash:', hash)
+
+        // Wait for confirmation
+        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+        if (!receipt) {
+          throw new Error('Transaction receipt not found')
+        }
+
+        console.log('✅ Transaction confirmed at block:', receipt.blockNumber)
+        console.log('📊 Transaction details:', {
+          from: receipt.from,
+          to: receipt.to,
+          status: receipt.status,
+          blockNumber: receipt.blockNumber,
+          transactionHash: receipt.transactionHash,
+        })
+
+        return hash
+      } catch (error) {
+        console.error('❌ Proposal creation failed:', error)
+        throw error
+      }
     },
 
-    onSuccess: () => {
+    onSuccess: (hash) => {
+      clearProposalCache()
+      console.log('🔄 Clearing proposal cache and invalidating proposal queries...')
+
+      // Invalidate all proposal-related queries to force refresh
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposals', null],
+      })
+
+      // Also invalidate all status-filtered queries
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],
+        exact: false
       })
     },
+
+    onError: (error) => {
+      console.error('❌ Mutation error:', error)
+    }
   })
 }

@@ -56,9 +56,124 @@ function getAddr(key: keyof typeof addresses.localhost): Address {
   return addresses.localhost[key] as Address
 }
 
-/* -------------------------------------------------------------------------- */
-/*                           PROPOSAL LISTING                                */
-/* -------------------------------------------------------------------------- */
+let cachedProposalList: import('./types').PreparedProposal[] | null = null
+let cachedProposalListTimestamp = 0
+const PROPOSAL_LIST_CACHE_TTL = 15 * 1000
+
+function filterByStatus(
+  proposals: import('./types').PreparedProposal[],
+  status: number | null,
+) {
+  if (status === null) return proposals
+  return proposals.filter((proposal) => proposal.status === status)
+}
+
+async function fetchProposalList(
+  client = publicClient,
+): Promise<import('./types').PreparedProposal[]> {
+  const managerAddr = getAddr('proposalDraftManager')
+
+  const maxProposalId = await client.readContract({
+    address: managerAddr,
+    abi: ProposalDraftManagerABI,
+    functionName: 'getProposalCount',
+    authorizationList: undefined
+  }) as bigint
+
+  const count = Number(maxProposalId)
+  if (count === 0) {
+    console.debug('📊 No proposals found on chain')
+    return []
+  }
+
+  console.debug('📊 Fetching proposals from chain...', { count })
+
+  const ids = Array.from({ length: count }, (_, index) => BigInt(index + 1))
+
+  const proposalReads = ids.map((id) =>
+    client.readContract({
+      address: managerAddr,
+      abi: ProposalDraftManagerABI,
+      functionName: 'getProposal',
+      args: [id],
+      authorizationList: undefined
+    }) as Promise<ProposalRaw>
+  )
+
+  const sponsorshipReads = ids.map((id) =>
+    client.readContract({
+      address: managerAddr,
+      abi: ProposalDraftManagerABI,
+      functionName: 'getSponsorshipStatus',
+      args: [id],
+      authorizationList: undefined
+    }) as Promise<[bigint, bigint, boolean]>
+  )
+
+  const [proposalRaws, sponsorStatuses] = await Promise.all([
+    Promise.all(proposalReads),
+    Promise.all(sponsorshipReads)
+  ])
+
+  return proposalRaws.map((proposalRaw, index) => {
+    const sponsorStatus = sponsorStatuses[index]
+    const status = Number(proposalRaw.status)
+    const votingEndedAt = Number(proposalRaw.votingEndedAt)
+
+    return {
+      id: Number(proposalRaw.id),
+      proposer: proposalRaw.proposer,
+      proposalType: Number(proposalRaw.proposalType),
+      title: proposalRaw.title,
+      description: proposalRaw.description,
+      status,
+      statusLabel: getProposalStatusLabel(status),
+      createdAt: Number(proposalRaw.createdAt),
+      votingStartedAt: Number(proposalRaw.votingStartedAt),
+      votingEndedAt,
+      executedAt: Number(proposalRaw.executedAt),
+      sponsorCount: Number(sponsorStatus[0]),
+      partyCount: Number(sponsorStatus[1]),
+      thresholdMet: Boolean(sponsorStatus[2]),
+      // NOTE: lifecycle booleans (isVoting/isClosed) are intentionally omitted here.
+      // The aggregator returns normalized, raw chain data only. UI components
+      // must derive time-sensitive lifecycle state using the canonical
+      // blockchain-synced time (useBlockchainSyncedTime) to ensure consistent
+      // behavior across renders.
+    }
+  })
+}
+
+export function clearProposalCache() {
+  cachedProposalList = null
+  cachedProposalListTimestamp = 0
+}
+
+export async function getProposalsByStatus(
+  statusFilter: number | null = null,
+  client = publicClient
+): Promise<import('./types').PreparedProposal[]> {
+  const now = Date.now()
+
+  if (cachedProposalList && now - cachedProposalListTimestamp < PROPOSAL_LIST_CACHE_TTL) {
+    console.debug('📊 Returning cached proposals', {
+      statusFilter,
+      cachedCount: cachedProposalList.length,
+      ageMs: now - cachedProposalListTimestamp
+    })
+    return filterByStatus(cachedProposalList, statusFilter)
+  }
+
+  try {
+    const proposals = await fetchProposalList(client)
+    cachedProposalList = proposals
+    cachedProposalListTimestamp = now
+    return filterByStatus(proposals, statusFilter)
+  } catch (error) {
+    console.error('❌ Error in getProposalsByStatus:', error)
+    throw error
+  }
+}
 
 export function getProposalStatusLabel(status: number): string {
   switch (status) {
@@ -80,83 +195,6 @@ export function getProposalStatusLabel(status: number): string {
       return 'Unknown'
   }
 }
-
-export async function getProposalsByStatus(
-  statusFilter: number | null = null,
-  client = publicClient
-): Promise<import('./types').PreparedProposal[]> {
-  const managerAddr = getAddr('proposalDraftManager')
-
-  const maxProposalId = await client.readContract({
-    address: managerAddr,
-    abi: ProposalDraftManagerABI,
-    functionName: 'getProposalCount',
-    authorizationList: undefined
-  }) as bigint
-
-  const configAddr = getAddr('governanceConfig')
-  // read voting duration
-  const votingDuration = Number(await client.readContract({
-    address: configAddr,
-    abi: GovernanceConfigABI,
-    functionName: 'getVotingDuration',
-    authorizationList: undefined
-  }) as bigint)
-
-  const proposals: import('./types').PreparedProposal[] = []
-
-  for (let i = BigInt(1); i <= maxProposalId; i++) {
-    const id = i
-    const proposalRaw = await client.readContract({
-      address: managerAddr,
-      abi: ProposalDraftManagerABI,
-      functionName: 'proposals',
-      args: [id],
-      authorizationList: undefined
-    }) as ProposalRaw
-
-    const sponsorStatus = await client.readContract({
-      address: managerAddr,
-      abi: ProposalDraftManagerABI,
-      functionName: 'getSponsorshipStatus',
-      args: [id],
-      authorizationList: undefined
-    }) as [bigint, bigint, boolean]
-
-    const status = Number(proposalRaw[5])
-    if (statusFilter !== null && status !== statusFilter) continue
-
-    const votingEndedAt = Number(proposalRaw[8])
-    const now = Math.floor(Date.now() / 1000)
-    const isVoting = status === 2 && now < votingEndedAt
-    const isClosed = status === 3
-
-    proposals.push({
-      id: Number(proposalRaw[0]),
-      proposer: proposalRaw[1],
-      proposalType: Number(proposalRaw[2]),
-      title: proposalRaw[3],
-      description: proposalRaw[4],
-      status,
-      statusLabel: getProposalStatusLabel(status),
-      createdAt: Number(proposalRaw[6]),
-      votingStartedAt: Number(proposalRaw[7]),
-      votingEndedAt,
-      executedAt: Number(proposalRaw[9]),
-      sponsorCount: Number(sponsorStatus[0]),
-      partyCount: Number(sponsorStatus[1]),
-      thresholdMet: Boolean(sponsorStatus[2]),
-      isVoting,
-      isClosed
-    })
-  }
-
-  return proposals
-}
-
-/* -------------------------------------------------------------------------- */
-/*                          GOVERNANCE CONFIG READS                           */
-/* -------------------------------------------------------------------------- */
 
 export async function getGovernanceParameters(
   client = publicClient
@@ -203,10 +241,10 @@ export async function getGovernanceParameters(
   ]) as [bigint, bigint, bigint, bigint, boolean]
 
   return {
-    quorum,
-    votingDuration,
-    approvalThreshold,
-    minProposalDelay,
+    quorum: Number(quorum),
+    votingDuration: Number(votingDuration),
+    approvalThreshold: Number(approvalThreshold),
+    minProposalDelay: Number(minProposalDelay),
     emergencyPause
   }
 }
@@ -218,30 +256,36 @@ export async function getGovernanceParameters(
 export async function getUserSeats(
   userAddress: Address,
   client = publicClient
-): Promise<bigint[]> {
-  return client.readContract({
+): Promise<number[]> {
+  const seats = await client.readContract({
     address: getAddr('seatNft'),
     abi: SeatNFTABI,
     functionName: 'getSeatsOfHolder',
     args: [userAddress],
     authorizationList: undefined
-  }) as Promise<bigint[]>
+  }) as bigint[]
+
+  return seats.map((seatId) => Number(seatId))
 }
 
 /* -------------------------------------------------------------------------- */
 /*                           PROPOSAL AGGREGATOR                              */
 /* -------------------------------------------------------------------------- */
+
 type ProposalRaw = {
+  id: bigint
   proposer: Address
   proposalType: bigint
-  status: bigint
+  title: string
   description: string
+  status: bigint
   createdAt: bigint
-  activatedAt: bigint
   votingStartedAt: bigint
   votingEndedAt: bigint
+  executedAt: bigint
   quorumRequired: bigint
   approvalThresholdRequired: bigint
+  blockNumber: bigint
 }
 
 type VoteResultRaw = {
@@ -293,28 +337,28 @@ export async function getProposal(
   ]
 
   const proposal: ProposalData = {
-    id,
+    id: Number(id),
     proposer: proposalRaw.proposer,
     proposalType: mapType(Number(proposalRaw.proposalType)),
     status: mapStatus(Number(proposalRaw.status)),
     description: proposalRaw.description,
-    createdAt: proposalRaw.createdAt,
-    activatedAt: proposalRaw.activatedAt,
-    votingStartedAt: proposalRaw.votingStartedAt,
-    votingEndedAt: proposalRaw.votingEndedAt,
-    quorumRequired: proposalRaw.quorumRequired,
-    approvalThresholdRequired: proposalRaw.approvalThresholdRequired,
+    createdAt: Number(proposalRaw.createdAt),
+    activatedAt: Number(proposalRaw.votingStartedAt),
+    votingStartedAt: Number(proposalRaw.votingStartedAt),
+    votingEndedAt: Number(proposalRaw.votingEndedAt),
+    quorumRequired: Number(proposalRaw.quorumRequired),
+    approvalThresholdRequired: Number(proposalRaw.approvalThresholdRequired),
     votes: {
-      approvalVotes: voteResultRaw.approvalVotes,
-      rejectionVotes: voteResultRaw.rejectionVotes,
-      totalVotes: voteResultRaw.totalVotes,
-      quorumMet: voteResultRaw.quorumMet,
-      approvalThresholdMet: voteResultRaw.approvalThresholdMet,
-      approved: voteResultRaw.approved
+      approvalVotes: Number(voteResultRaw.approvalVotes ?? 0),
+      rejectionVotes: Number(voteResultRaw.rejectionVotes ?? 0),
+      totalVotes: Number(voteResultRaw.totalVotes ?? 0),
+      quorumMet: Boolean(voteResultRaw.quorumMet),
+      approvalThresholdMet: Boolean(voteResultRaw.approvalThresholdMet),
+      approved: Boolean(voteResultRaw.approved)
     },
     execution: {
-      canExecute: executionCheck[0],
-      reason: executionCheck[1],
+      canExecute: Boolean(executionCheck[0]),
+      reason: executionCheck[1] ?? '',
       isExecuted: Number(proposalRaw.status) === 4
     }
   }
@@ -327,12 +371,12 @@ export async function getProposal(
     proposal.userVotes = {}
 
     const votes = await Promise.all(
-      seats.map(seatId =>
+      seats.map((seatId) =>
         client.readContract({
           address: getAddr('votingEngine'),
           abi: VotingEngineABI,
           functionName: 'getVote',
-          args: [id, seatId],
+          args: [id, BigInt(seatId)],
           authorizationList: undefined
         })
       )
@@ -381,4 +425,166 @@ export async function getUnifiedGovernanceState(
   }
 
   return state
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         USER VOTE & SUPPORT STATUS                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * @notice Get the vote option for a user's seat on a proposal
+ * @param proposalId ID of the proposal
+ * @param seatId ID of the seat
+ * @returns Vote option (0 for Approve, 1 for Reject) or null if not voted
+ */
+export async function getUserVote(
+  proposalId: bigint | number,
+  seatId: bigint | number,
+  client = publicClient
+): Promise<0 | 1 | null> {
+  try {
+    const result = await client.readContract({
+      address: getAddr('votingEngine'),
+      abi: VotingEngineABI,
+      functionName: 'getVote',
+      args: [BigInt(proposalId), BigInt(seatId)],
+      authorizationList: undefined
+    }) as bigint
+
+    // getVote returns type(uint256).max if not voted
+    if (result === BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')) {
+      return null
+    }
+
+    return Number(result) as 0 | 1
+  } catch (error) {
+    console.error(`Error fetching user vote for proposal ${proposalId}, seat ${seatId}:`, error)
+    return null
+  }
+}
+
+/**
+ * @notice Check if a user has supported a draft proposal
+ * @param proposalId ID of the proposal
+ * @param seatId ID of the seat
+ * @returns True if the seat has sponsored the proposal
+ */
+export async function hasUserSupported(
+  proposalId: bigint | number,
+  seatId: bigint | number,
+  client = publicClient
+): Promise<boolean> {
+  try {
+    const result = await client.readContract({
+      address: getAddr('proposalDraftManager'),
+      abi: ProposalDraftManagerABI,
+      functionName: 'hasSponsoredProposal',
+      args: [BigInt(proposalId), BigInt(seatId)],
+      authorizationList: undefined
+    }) as boolean
+
+    return result
+  } catch (error) {
+    console.error(`Error checking user support for proposal ${proposalId}, seat ${seatId}:`, error)
+    return false
+  }
+}
+
+/**
+ * @notice Get the list of parties that have sponsored a proposal
+ * @param proposalId ID of the proposal
+ * @returns Array of party IDs that sponsored the proposal
+ */
+export async function getProposalSponsorParties(
+  proposalId: bigint | number,
+  client = publicClient
+): Promise<number[]> {
+  try {
+    const result = await client.readContract({
+      address: getAddr('proposalDraftManager'),
+      abi: ProposalDraftManagerABI,
+      functionName: 'getProposalSponsorParties',
+      args: [BigInt(proposalId)],
+      authorizationList: undefined
+    }) as bigint[]
+
+    return result.map((partyId) => Number(partyId))
+  } catch (error) {
+    console.error(`Error fetching sponsor parties for proposal ${proposalId}:`, error)
+    return []
+  }
+}
+
+/**
+ * @notice Get party name from party ID
+ * @param partyId ID of the party
+ * @returns Party name
+ */
+export async function getPartyName(
+  partyId: bigint | number,
+  client = publicClient
+): Promise<string> {
+  try {
+    const name = await client.readContract({
+      address: getAddr('seatNft'),
+      abi: SeatNFTABI,
+      functionName: 'partyNames',
+      args: [BigInt(partyId)],
+      authorizationList: undefined
+    }) as string
+
+    return name
+  } catch (error) {
+    console.error(`Error fetching party name for party ${partyId}:`, error)
+    return `Party ${partyId}`
+  }
+}
+
+/**
+ * @notice Get the list of seats that have sponsored a proposal
+ * @param proposalId ID of the proposal
+ * @returns Array of seat IDs that sponsored the proposal
+ */
+export async function getProposalSponsors(
+  proposalId: bigint | number,
+  client = publicClient
+): Promise<number[]> {
+  try {
+    const result = await client.readContract({
+      address: getAddr('proposalDraftManager'),
+      abi: ProposalDraftManagerABI,
+      functionName: 'getProposalSponsors',
+      args: [BigInt(proposalId)],
+      authorizationList: undefined
+    }) as bigint[]
+
+    return result.map((seatId) => Number(seatId))
+  } catch (error) {
+    console.error(`Error fetching sponsors for proposal ${proposalId}:`, error)
+    return []
+  }
+}
+
+export async function getProposalSponsorParty(
+  proposalId: bigint | number,
+  seatId: bigint | number,
+  client = publicClient
+): Promise<number | null> {
+  try {
+    const partyId = await client.readContract({
+      address: getAddr('proposalDraftManager'),
+      abi: ProposalDraftManagerABI,
+      functionName: 'proposalSponsorParty',
+      args: [BigInt(proposalId), BigInt(seatId)],
+      authorizationList: undefined
+    }) as bigint
+
+    return partyId === 0n ? null : Number(partyId)
+  } catch (error) {
+    console.error(
+      `Error fetching historical sponsor party for proposal ${proposalId}, seat ${seatId}:`,
+      error
+    )
+    throw error
+  }
 }

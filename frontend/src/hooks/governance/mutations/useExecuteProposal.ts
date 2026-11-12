@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWriteContract, useAccount } from 'wagmi'
-import { publicClient } from '../../../domain/governance/aggregator'
+import { publicClient, clearProposalCache } from '../../../domain/governance/aggregator'
 import ExecutionABI from '../../../contracts/abi/ExecutionEngine.json'
 import { CONTRACTS } from '../../../contracts/addresses'
 
@@ -31,8 +31,10 @@ export function useExecuteProposal() {
     },
 
     onSuccess: (_data, { proposalId }) => {
+      clearProposalCache()
+      console.debug('🔄 Clearing proposal cache and invalidating queries after executeProposal', { proposalId })
       queryClient.invalidateQueries({
-        queryKey: ['governance', 'proposal', proposalId],
+        queryKey: ['governance', 'proposal', proposalId.toString()],
       })
 
       queryClient.invalidateQueries({
