@@ -16,6 +16,7 @@ import ExecutionEngineABI from '../../contracts/abi/ExecutionEngine.json'
 
 
 import {ProposalStatusEnum,ProposalTypeEnum,VoteOptionEnum,GovernanceParameters,VoteResult,ExecutionStatus,ProposalData,UnifiedGovernanceState} from './types'
+import { getPartyName as getPartyNameFromMap } from './parties'
 
 /* -------------------------------------------------------------------------- */
 /*                               CLIENT SETUP                                 */
@@ -31,6 +32,25 @@ export const publicClient = createPublicClient({
 /* -------------------------------------------------------------------------- */
 /*                            INTERNAL UTILITIES                              */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * On-chain ProposalStatus enum ordinals. These mirror ProposalModels.sol and are
+ * the ONLY source for status comparisons in the frontend.
+ */
+export const PROPOSAL_STATUS_DRAFT = 0
+export const PROPOSAL_STATUS_ACTIVE = 1
+export const PROPOSAL_STATUS_VOTING = 2
+export const PROPOSAL_STATUS_CLOSED = 3
+export const PROPOSAL_STATUS_EXECUTED = 4
+export const PROPOSAL_STATUS_REJECTED = 5
+export const PROPOSAL_STATUS_CANCELLED = 6
+
+/**
+ * Sentinel returned by VotingEngine.getVote() when a seat has not voted.
+ * Mirrors `type(uint256).max` in Solidity.
+ */
+const MAX_UINT256 =
+  BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
 
 function mapStatus(status: number): ProposalStatusEnum {
   const map: Record<number, ProposalStatusEnum> = {
@@ -283,15 +303,17 @@ type ProposalRaw = {
   votingStartedAt: bigint
   votingEndedAt: bigint
   executedAt: bigint
-  quorumRequired: bigint
-  approvalThresholdRequired: bigint
   blockNumber: bigint
 }
 
+// Mirrors the VotingResult struct returned by VotingEngine.getFullVotingResult().
+// The total field is named `totalVotesCast` on-chain - NOT `totalVotes`.
 type VoteResultRaw = {
+  proposalId: bigint
+  totalVotesCast: bigint
   approvalVotes: bigint
   rejectionVotes: bigint
-  totalVotes: bigint
+  totalSeatsIssued: bigint
   quorumMet: boolean
   approvalThresholdMet: boolean
   approved: boolean
@@ -346,12 +368,10 @@ export async function getProposal(
     activatedAt: Number(proposalRaw.votingStartedAt),
     votingStartedAt: Number(proposalRaw.votingStartedAt),
     votingEndedAt: Number(proposalRaw.votingEndedAt),
-    quorumRequired: Number(proposalRaw.quorumRequired),
-    approvalThresholdRequired: Number(proposalRaw.approvalThresholdRequired),
     votes: {
       approvalVotes: Number(voteResultRaw.approvalVotes ?? 0),
       rejectionVotes: Number(voteResultRaw.rejectionVotes ?? 0),
-      totalVotes: Number(voteResultRaw.totalVotes ?? 0),
+      totalVotes: Number(voteResultRaw.totalVotesCast ?? 0),
       quorumMet: Boolean(voteResultRaw.quorumMet),
       approvalThresholdMet: Boolean(voteResultRaw.approvalThresholdMet),
       approved: Boolean(voteResultRaw.approved)
@@ -359,7 +379,7 @@ export async function getProposal(
     execution: {
       canExecute: Boolean(executionCheck[0]),
       reason: executionCheck[1] ?? '',
-      isExecuted: Number(proposalRaw.status) === 4
+      isExecuted: Number(proposalRaw.status) === PROPOSAL_STATUS_EXECUTED
     }
   }
 
@@ -383,8 +403,16 @@ export async function getProposal(
     )
 
     seats.forEach((seatId, index) => {
-      proposal.userVotes![seatId.toString()] =
-        Number(votes[index]) as VoteOptionEnum
+      const raw = votes[index] as bigint
+
+      // VotingEngine.getVote returns type(uint256).max when the seat has not
+      // voted. Storing that sentinel would surface a meaningless huge number,
+      // so non-voters are simply omitted from the record.
+      if (raw === MAX_UINT256) {
+        return
+      }
+
+      proposal.userVotes![seatId.toString()] = Number(raw) as VoteOptionEnum
     })
   }
 
@@ -517,27 +545,17 @@ export async function getProposalSponsorParties(
 
 /**
  * @notice Get party name from party ID
+ * @dev SeatNFT has no `partyNames` mapping - only `seatParty`. Party names are
+ *      off-chain metadata, so this delegates to the shared static map in
+ *      domain/governance/parties.ts. Kept async to preserve the existing
+ *      call signature; no RPC is performed.
  * @param partyId ID of the party
  * @returns Party name
  */
 export async function getPartyName(
-  partyId: bigint | number,
-  client = publicClient
+  partyId: bigint | number
 ): Promise<string> {
-  try {
-    const name = await client.readContract({
-      address: getAddr('seatNft'),
-      abi: SeatNFTABI,
-      functionName: 'partyNames',
-      args: [BigInt(partyId)],
-      authorizationList: undefined
-    }) as string
-
-    return name
-  } catch (error) {
-    console.error(`Error fetching party name for party ${partyId}:`, error)
-    return `Party ${partyId}`
-  }
+  return getPartyNameFromMap(partyId)
 }
 
 /**

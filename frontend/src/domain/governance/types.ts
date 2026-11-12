@@ -53,8 +53,6 @@ export interface ProposalData {
   activatedAt: number
   votingStartedAt: number
   votingEndedAt: number
-  quorumRequired: number
-  approvalThresholdRequired: number
   votes: VoteResult
   execution: ExecutionStatus
   userSeats?: number[]

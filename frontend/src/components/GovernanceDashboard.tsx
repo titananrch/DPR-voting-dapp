@@ -22,6 +22,15 @@ import { useSeatDetails } from "../hooks/governance/queries/useSeatDetails";
 import { useUserActivityMetrics } from "../hooks/governance/queries/useUserActivityMetrics";
 import { publicClient } from "../domain/governance/aggregator";
 import {
+  PROPOSAL_STATUS_ACTIVE,
+  PROPOSAL_STATUS_CANCELLED,
+  PROPOSAL_STATUS_CLOSED,
+  PROPOSAL_STATUS_DRAFT,
+  PROPOSAL_STATUS_EXECUTED,
+  PROPOSAL_STATUS_REJECTED,
+  PROPOSAL_STATUS_VOTING,
+} from "../domain/governance/aggregator";
+import {
   CheckCircle,
   Clock,
   AlertCircle,
@@ -122,7 +131,6 @@ export default function GovernanceDashboard() {
   const { data: activityMetrics } = useUserActivityMetrics(
     allProposals ?? [],
     address,
-    seats,
   );
   const { data: totalSeats } = useTotalSeatsIssued();
 
@@ -148,12 +156,28 @@ export default function GovernanceDashboard() {
   const seatCount = seats?.length ?? 0;
   const canVoteOrSupport = seatCount > 0;
 
+  // Tab buckets are derived from authoritative on-chain status ordinals.
+  // Draft and Active are both pre-voting so they share the Draft tab; every
+  // terminal outcome (Closed, Executed, Rejected, Cancelled) belongs to the
+  // final tab. They remain individually labelled by statusLabel when rendered.
   const draftProposals =
     allProposals
-      ?.filter((p) => p.status === 0 || p.status === 1)
+      ?.filter(
+        (p) =>
+          p.status === PROPOSAL_STATUS_DRAFT ||
+          p.status === PROPOSAL_STATUS_ACTIVE,
+      )
       .sort((a, b) => b.status - a.status) ?? [];
-  const votingProposals = allProposals?.filter((p) => p.status === 2) ?? [];
-  const passedProposals = allProposals?.filter((p) => p.status >= 3) ?? [];
+  const votingProposals =
+    allProposals?.filter((p) => p.status === PROPOSAL_STATUS_VOTING) ?? [];
+  const passedProposals =
+    allProposals?.filter(
+      (p) =>
+        p.status === PROPOSAL_STATUS_CLOSED ||
+        p.status === PROPOSAL_STATUS_EXECUTED ||
+        p.status === PROPOSAL_STATUS_REJECTED ||
+        p.status === PROPOSAL_STATUS_CANCELLED,
+    ) ?? [];
 
   const draftProposalIds = draftProposals.map((proposal) => proposal.id);
   const votingProposalIds = votingProposals.map((proposal) => proposal.id);
@@ -319,32 +343,36 @@ export default function GovernanceDashboard() {
           </div>
         )}
 
-        {/* Activity Section */}
+        {/* Governance Activity (global proposal counts, not per-wallet) */}
         {activityMetrics && (
           <div className="border-t border-white/5 pt-4">
-            <p className="text-sm text-gray-600 mb-3">Activity</p>
+            <p className="text-sm text-gray-600 mb-3">
+              Governance Activity
+            </p>
             <div className="grid grid-cols-2 gap-3">
-              {/* Votes Cast */}
+              {/* Proposals In Voting */}
               <div className="bg-[#131313] rounded-lg p-3 hover:bg-[#11111a] transition-colors">
-                <p className="text-gray-500 text-xs mb-1">Votes Cast</p>
+                <p className="text-gray-500 text-xs mb-1">
+                  Proposals In Voting
+                </p>
                 <div className="flex items-baseline gap-1">
                   <p className="text-2xl font-bold text-emerald-500">
-                    {activityMetrics.votesCount}
+                    {activityMetrics.votingProposalCount}
                   </p>
-                  <p className="text-gray-600 text-xs">total</p>
+                  <p className="text-gray-600 text-xs">on-chain</p>
                 </div>
               </div>
 
-              {/* Proposals Supported */}
+              {/* Proposals Awaiting Execution */}
               <div className="bg-[#131313] rounded-lg p-3 hover:bg-[#11111a] transition-colors">
                 <p className="text-gray-500 text-xs mb-1">
-                  Proposals Supported
+                  Awaiting Execution
                 </p>
                 <div className="flex items-baseline gap-1">
                   <p className="text-2xl font-bold text-amber-500">
-                    {activityMetrics.proposalsSupportedCount}
+                    {activityMetrics.closedProposalCount}
                   </p>
-                  <p className="text-gray-600 text-xs">total</p>
+                  <p className="text-gray-600 text-xs">on-chain</p>
                 </div>
               </div>
             </div>
@@ -392,10 +420,14 @@ export default function GovernanceDashboard() {
                 : "text-gray-500 hover:text-gray-600 hover:cursor-pointer"
             }`}
           >
-            Executed ({passedProposals.length})
+            Concluded ({passedProposals.length})
           </button>
         </div>
       </div>
+      <p className="text-xs text-gray-600 -mt-2">
+        The final tab lists all concluded proposals (Closed, Executed, Rejected,
+        Cancelled). Each card shows its authoritative on-chain status.
+      </p>
 
       {/* Proposals List */}
       {loading ? (
@@ -545,7 +577,7 @@ function ProposalCard({
       currentTime !== null && currentTime !== undefined
         ? Number(currentTime)
         : null;
-    const statusIsVoting = proposal.status === 2;
+    const statusIsVoting = proposal.status === PROPOSAL_STATUS_VOTING;
     const votingWindowOpen =
       statusIsVoting &&
       now !== null &&
@@ -572,12 +604,13 @@ function ProposalCard({
   }, [proposal.status, proposal.votingEndedAt, currentTime]);
 
   const displayStatusLabel =
-    proposal.status === 2 && votingWindowState.votingWindowExpired
+    proposal.status === PROPOSAL_STATUS_VOTING &&
+    votingWindowState.votingWindowExpired
       ? "Voting expired"
       : proposal.statusLabel;
 
   const canCloseVoting =
-    proposal.status === 2 &&
+    proposal.status === PROPOSAL_STATUS_VOTING &&
     votingWindowState.votingWindowExpired &&
     !closeVoting.isPending;
 
@@ -680,7 +713,7 @@ function ProposalCard({
 
     // Draft status - ready to activate
     if (
-      proposal.status === 0 &&
+      proposal.status === PROPOSAL_STATUS_DRAFT &&
       proposal.thresholdMet &&
       !startVoting.isPending
     ) {
@@ -706,7 +739,7 @@ function ProposalCard({
     }
 
     // Active status - waiting for voting delay (automatically transitions)
-    if (proposal.status === 1) {
+    if (proposal.status === PROPOSAL_STATUS_ACTIVE) {
       return (
         <div className="text-sm text-gray-600">
           ⏳ Waiting for voting delay...
@@ -737,17 +770,33 @@ function ProposalCard({
       );
     }
 
-    // Closed status - execute if eligible
-    if (proposal.status === 3) {
-      if (executionStatus?.isExecuted) {
-        return (
-          <div className="text-sm text-green-600 flex items-center gap-2">
-            <Check className="w-4 h-4" />
-            Executed
-          </div>
-        );
-      }
+    // Terminal statuses are derived from authoritative on-chain status, not
+    // from a stale "isExecuted" heuristic. Steps 1-2 made Executed (4) and
+    // Rejected (5) reachable, so each is rendered explicitly.
+    if (proposal.status === PROPOSAL_STATUS_EXECUTED) {
+      return (
+        <div className="text-sm text-green-600 flex items-center gap-2">
+          <Check className="w-4 h-4" />
+          Executed
+        </div>
+      );
+    }
 
+    if (proposal.status === PROPOSAL_STATUS_REJECTED) {
+      return (
+        <div className="text-sm text-red-600 flex items-center gap-2">
+          <X className="w-4 h-4" />
+          Rejected by governance
+        </div>
+      );
+    }
+
+    if (proposal.status === PROPOSAL_STATUS_CANCELLED) {
+      return <div className="text-sm text-gray-500">Cancelled</div>;
+    }
+
+    // Closed status - awaiting an execution attempt
+    if (proposal.status === PROPOSAL_STATUS_CLOSED) {
       if (executionStatus?.canExecute && !executeProposal.isPending) {
         return (
           <button
@@ -787,7 +836,7 @@ function ProposalCard({
   return (
     <div
       className={`rounded-lg p-4 hover:shadow-md transition-shadow border ${
-        proposal.status === 1 ? "border-yellow-400/30" : "border-white/5"
+        proposal.status === PROPOSAL_STATUS_ACTIVE ? "border-yellow-400/30" : "border-white/5"
       }`}
     >
       {/* Header */}
@@ -802,11 +851,11 @@ function ProposalCard({
           }`}
         >
           {statusIcon[displayStatusLabel]}
-          {proposal.status === 1 ? "Waiting for Voting" : displayStatusLabel}
+          {proposal.status === PROPOSAL_STATUS_ACTIVE ? "Waiting for Voting" : displayStatusLabel}
         </span>
       </div>
 
-      {proposal.status === 2 && (
+      {proposal.status === PROPOSAL_STATUS_VOTING && (
         <div className="mb-3 text-xs text-gray-400">
           {votingWindowState.votingWindowExpired ? (
             <span className="text-amber-300 font-medium">
@@ -821,7 +870,7 @@ function ProposalCard({
       )}
 
       {/* Sponsorship Status (Draft / Active) */}
-      {(proposal.status === 0 || proposal.status === 1) && (
+      {(proposal.status === PROPOSAL_STATUS_DRAFT || proposal.status === PROPOSAL_STATUS_ACTIVE) && (
         <div className="bg-[#131313] p-3 rounded-lg mb-3 text-sm hover:bg-[#11111a] transition-colors">
           <div className="flex justify-between items-center mb-2">
             <span>
@@ -835,19 +884,19 @@ function ProposalCard({
               </span>{" "}
               parties
             </span>
-            {proposal.status === 0 && proposal.thresholdMet && (
+            {proposal.status === PROPOSAL_STATUS_DRAFT && proposal.thresholdMet && (
               <span className="text-green-600 font-semibold">
                 ✓ Ready to activate
               </span>
             )}
-            {proposal.status === 1 && (
+            {proposal.status === PROPOSAL_STATUS_ACTIVE && (
               <span className="text-yellow-300 font-semibold">
                 ⏳ Voting starts soon
               </span>
             )}
           </div>
 
-          {proposal.status === 1 && (
+          {proposal.status === PROPOSAL_STATUS_ACTIVE && (
             <div className="mb-3 text-xs text-gray-400">
               <p>Support phase completed</p>
               <p>Waiting for voting to begin</p>
@@ -987,7 +1036,7 @@ function ProposalCard({
         </div>
       )}
 
-      {proposal.status === 1 ? (
+      {proposal.status === PROPOSAL_STATUS_ACTIVE ? (
         <div className="flex justify-end items-end my-3 mr-2">
           <div
             className={`text-xs px-2 py-1 border rounded-lg bg-slate-800/30 whitespace-nowrap ${
@@ -1001,7 +1050,7 @@ function ProposalCard({
               : "Support phase finished"}
           </div>
         </div>
-      ) : proposal.status === 0 &&
+      ) : proposal.status === PROPOSAL_STATUS_DRAFT &&
         canVote &&
         !proposal.thresholdMet &&
         !isSupported ? (
