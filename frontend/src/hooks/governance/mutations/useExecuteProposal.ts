@@ -32,13 +32,23 @@ export function useExecuteProposal() {
 
     onSuccess: (_data, { proposalId }) => {
       clearProposalCache()
-      console.debug('🔄 Clearing proposal cache and invalidating queries after executeProposal', { proposalId })
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposal', proposalId.toString()],
       })
 
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],
+      })
+      // Execution persists a terminal status (Executed/Rejected) and may change
+      // GovernanceConfig parameters, so refresh both immediately.
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-details-map'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-status-counts'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'parameters'],
       })
     },
   })

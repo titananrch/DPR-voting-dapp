@@ -35,6 +35,14 @@ export function useCloseVoting() {
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],
       })
+      // Voting just closed, so execution eligibility changed on-chain. Refresh
+      // the aggregated detail map immediately instead of waiting for the poll.
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-details-map'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-status-counts'],
+      })
     },
   })
 }

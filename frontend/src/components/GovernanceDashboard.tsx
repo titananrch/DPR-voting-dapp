@@ -44,14 +44,55 @@ import {
 } from "lucide-react";
 import { ProposalForm } from "./governance/ProposalForm";
 
-function useBlockchainSyncedTime() {
-  const [baseBlockTime, setBaseBlockTime] = React.useState<number | null>(null);
-  const [baseLocalTime, setBaseLocalTime] = React.useState<number>(() =>
-    Math.floor(Date.now() / 1000),
-  );
+const CLOCK_TICK_MS = 1000;
+const CLOCK_SYNC_MS = 15_000;
+const CLOCK_STALE_AFTER_S = 60;
+
+/**
+ * Extra margin applied before offering the Close Voting action.
+ *
+ * The projected chain time can drift behind the real chain time while the local
+ * chain is idle (no new block to re-anchor against). Requiring the deadline plus
+ * this margin keeps the button from inviting a revert, WITHOUT treating a stale
+ * projection as a reason to withhold a contract-authorized action entirely.
+ *
+ * Must remain greater than CLOCK_STALE_AFTER_S so that a stale clock is always
+ * "past deadline" rather than "unknown".
+ */
+const CLOSE_SAFETY_MARGIN_S = 120;
+
+export type ChainClock = {
+  /** Estimated chain time in seconds, or null while unsynchronised. */
+  chainTime: number | null;
+  /** True when no new block has been observed recently, so the estimate is a
+   *  projection rather than an observation. */
+  isStale: boolean;
+  /** True when the last block-timestamp read failed (RPC/wallet unavailable). */
+  syncError: boolean;
+};
+
+/**
+ * Chain time sourced from the blockchain, not the browser clock.
+ *
+ * The browser clock is only used to interpolate BETWEEN observed blocks. The
+ * anchor is re-established exclusively when a NEW block is mined. This matters
+ * on a local Hardhat node, where an idle chain keeps returning the same frozen
+ * block timestamp: re-anchoring to it would drag the displayed chain time
+ * backwards and make a countdown reset instead of advancing.
+ */
+function useBlockchainSyncedTime(): ChainClock {
+  const { chain } = useAccount();
+
+  const [anchor, setAnchor] = React.useState<{
+    blockTimestamp: number;
+    localTimestamp: number;
+    blockNumber: bigint;
+  } | null>(null);
   const [currentLocalTime, setCurrentLocalTime] = React.useState<number>(() =>
     Math.floor(Date.now() / 1000),
   );
+  const [syncError, setSyncError] = React.useState(false);
+  const lastBlockNumberRef = React.useRef<bigint | null>(null);
 
   React.useEffect(() => {
     let mounted = true;
@@ -61,55 +102,59 @@ function useBlockchainSyncedTime() {
         const block = await publicClient.getBlock();
         if (!mounted || !block?.timestamp) return;
 
-        const newBlockTime = Number(block.timestamp);
-        const now = Math.floor(Date.now() / 1000);
+        const blockTimestamp = Number(block.timestamp);
+        const localTimestamp = Math.floor(Date.now() / 1000);
+        const blockNumber = block.number ?? 0n;
 
-        //TEMPORARELY VOTING DEBUG
-        console.log("BLOCK TIME", {
-          timestamp: block.timestamp,
-          timestampNumber: Number(block.timestamp),
-          jsTime: Date.now(),
-          jsTimeSeconds: Math.floor(Date.now() / 1000),
-        });
+        setSyncError(false);
 
-        if (baseBlockTime === null) {
-          setBaseBlockTime(newBlockTime);
-          setBaseLocalTime(now);
-          return;
-        }
+        const previousBlockNumber = lastBlockNumberRef.current;
+        const isFirstSync = previousBlockNumber === null;
+        const hasNewBlock =
+          previousBlockNumber !== null && blockNumber > previousBlockNumber;
 
-        const simulatedTime = baseBlockTime + (now - baseLocalTime);
-        const drift = Math.abs(newBlockTime - simulatedTime);
+        lastBlockNumberRef.current = blockNumber;
 
-        if (drift > 2) {
-          setBaseBlockTime(newBlockTime);
-          setBaseLocalTime(now);
+        if (isFirstSync || hasNewBlock) {
+          setAnchor({ blockTimestamp, localTimestamp, blockNumber });
         }
       } catch {
-        // ignore errors
+        if (mounted) {
+          setSyncError(true);
+        }
       }
     }
 
-    sync();
+    // Reset when the connected chain changes so stale timestamps from a
+    // previous network are never reused.
+    setAnchor(null);
+    lastBlockNumberRef.current = null;
+    void sync();
 
-    const syncInterval = setInterval(sync, 60000);
-
+    const syncInterval = setInterval(sync, CLOCK_SYNC_MS);
     const tickInterval = setInterval(() => {
       setCurrentLocalTime(Math.floor(Date.now() / 1000));
-    }, 1000);
+    }, CLOCK_TICK_MS);
 
     return () => {
       mounted = false;
       clearInterval(syncInterval);
       clearInterval(tickInterval);
     };
-  }, []);
+  }, [chain?.id]);
 
-  if (baseBlockTime === null) {
-    return null;
-  }
+  const chainTime = React.useMemo(() => {
+    if (!anchor) return null;
+    const elapsed = Math.max(0, currentLocalTime - anchor.localTimestamp);
+    return anchor.blockTimestamp + elapsed;
+  }, [anchor, currentLocalTime]);
 
-  return Math.max(0, baseBlockTime + (currentLocalTime - baseLocalTime));
+  const isStale = React.useMemo(() => {
+    if (!anchor) return false;
+    return currentLocalTime - anchor.localTimestamp > CLOCK_STALE_AFTER_S;
+  }, [anchor, currentLocalTime]);
+
+  return { chainTime, isStale, syncError };
 }
 
 export default function GovernanceDashboard() {
@@ -193,8 +238,11 @@ export default function GovernanceDashboard() {
     seats,
   );
 
-  // Blockchain synced time - single instance at dashboard level
-  const currentTime = useBlockchainSyncedTime();
+  // Blockchain synced time - single instance at dashboard level.
+  // chainTime is the authoritative estimate; isStale flags a projection that has
+  // not been re-anchored by a new block; syncError flags an unavailable source.
+  const { chainTime, isStale: chainTimeStale, syncError: chainTimeError } =
+    useBlockchainSyncedTime();
 
   const getTabProposals = React.useMemo(() => {
     switch (selectedTab) {
@@ -453,7 +501,9 @@ export default function GovernanceDashboard() {
               userSeats={seats ?? []}
               userVote={userVoteMap?.[proposal.id] ?? null}
               userSupported={userSupportMap?.[proposal.id] ?? false}
-              currentTime={currentTime}
+              currentTime={chainTime}
+              chainTimeStale={chainTimeStale}
+              chainTimeError={chainTimeError}
               isExpanded={expandedProposalId === proposal.id}
               onToggleExpand={() => handleToggleExpand(proposal.id)}
             />
@@ -476,6 +526,8 @@ function ProposalCard({
   userVote,
   userSupported,
   currentTime,
+  chainTimeStale,
+  chainTimeError,
   isExpanded,
   onToggleExpand,
 }: {
@@ -490,6 +542,8 @@ function ProposalCard({
   userVote?: 0 | 1 | null;
   userSupported?: boolean;
   currentTime: number | null;
+  chainTimeStale: boolean;
+  chainTimeError: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
@@ -562,15 +616,6 @@ function ProposalCard({
       : 0,
   );
 
-  //TEMPORARELY VOTING DEBUG
-  console.log("VOTING DEBUG", {
-    status: proposal.status,
-    votingStartedAt: proposal.votingStartedAt,
-    votingEndedAt: proposal.votingEndedAt,
-    currentTime,
-    difference: Number(proposal.votingEndedAt) - Number(currentTime),
-  });
-
   const votingWindowState = React.useMemo(() => {
     const votingEndedAt = Number(proposal.votingEndedAt ?? 0);
     const now =
@@ -603,16 +648,40 @@ function ProposalCard({
     };
   }, [proposal.status, proposal.votingEndedAt, currentTime]);
 
+  // Frontend timing is presentation only. An authoritative "expired" claim is
+  // only made when the chain clock is actually available and freshly anchored -
+  // a stale projection or a failed sync is never treated as authoritative.
+  const chainTimeTrustworthy =
+    currentTime !== null && !chainTimeStale && !chainTimeError;
+
   const displayStatusLabel =
     proposal.status === PROPOSAL_STATUS_VOTING &&
+    chainTimeTrustworthy &&
     votingWindowState.votingWindowExpired
       ? "Voting expired"
       : proposal.statusLabel;
 
+  // Closing voting is a real transaction that ProposalDraftManager validates
+  // itself via `block.timestamp >= votingEndedAt`, so the contract - not this
+  // projection - decides eligibility. A stale projection must therefore NOT
+  // withhold the action; it only means we require a conservative margin beyond
+  // the deadline. No anchor or a failed sync means there is no basis at all.
+  const hasChainTimeAnchor = currentTime !== null && !chainTimeError;
+  const votingDeadline = votingWindowState.votingEndedAt;
+  const safelyPastVotingDeadline =
+    hasChainTimeAnchor &&
+    votingDeadline > 0 &&
+    Number(currentTime) >= votingDeadline + CLOSE_SAFETY_MARGIN_S;
+
   const canCloseVoting =
     proposal.status === PROPOSAL_STATUS_VOTING &&
-    votingWindowState.votingWindowExpired &&
+    safelyPastVotingDeadline &&
     !closeVoting.isPending;
+
+  // Stale but past the conservative threshold: the action is offered, with a
+  // warning that the contract performs the real check.
+  const showStaleCloseWarning =
+    canCloseVoting && (chainTimeStale || !chainTimeTrustworthy);
 
   function formatTime(seconds: number) {
     const days = Math.floor(seconds / 86400);
@@ -857,7 +926,24 @@ function ProposalCard({
 
       {proposal.status === PROPOSAL_STATUS_VOTING && (
         <div className="mb-3 text-xs text-gray-400">
-          {votingWindowState.votingWindowExpired ? (
+          {currentTime === null ? (
+            <span className="text-gray-500">Awaiting chain time…</span>
+          ) : chainTimeError ? (
+            <span className="text-amber-300 font-medium">
+              Chain time unavailable — retrying
+            </span>
+          ) : showStaleCloseWarning ? (
+            // Past the deadline plus the safety margin while the projection is
+            // stale: the action is offered, but the contract makes the real call.
+            <span className="text-amber-300 font-medium">
+              Chain time is stale — the contract will verify whether voting can be
+              closed
+            </span>
+          ) : chainTimeStale ? (
+            <span className="text-gray-500">
+              Syncing with chain… (estimate may be behind)
+            </span>
+          ) : votingWindowState.votingWindowExpired ? (
             <span className="text-amber-300 font-medium">
               Voting period expired — awaiting closure
             </span>
@@ -902,7 +988,11 @@ function ProposalCard({
               <p>Waiting for voting to begin</p>
               {currentTime === null ? (
                 <p className="mt-1 font-semibold text-slate-200">
-                  Loading time...
+                  Awaiting chain time…
+                </p>
+              ) : chainTimeError ? (
+                <p className="mt-1 font-semibold text-amber-300">
+                  Chain time unavailable — retrying
                 </p>
               ) : (
                 <p className="mt-1 font-semibold text-slate-200">

@@ -29,12 +29,19 @@ export function useStartVoting() {
     },
     onSuccess: (_data, { proposalId }) => {
       clearProposalCache()
-      console.debug('🔄 Clearing proposal cache and invalidating queries after startVoting', { proposalId })
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposal', proposalId.toString()],
       })
       queryClient.invalidateQueries({
         queryKey: ['governance', 'proposals'],
+      })
+      // The proposal status changed on-chain (Active -> Voting), so the
+      // aggregated detail map and status counts must not wait for the poll.
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-details-map'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['governance', 'proposal-status-counts'],
       })
     },
   })
